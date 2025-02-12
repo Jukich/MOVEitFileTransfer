@@ -1,0 +1,7 @@
+{
+  "name": "moveitft",
+  "version": "1.0",
+  "dependencies": [
+    "curl"
+  ]
+}

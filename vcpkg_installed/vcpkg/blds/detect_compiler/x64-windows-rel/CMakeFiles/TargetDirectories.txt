@@ -1,0 +1,2 @@
+C:/Users/Jukich/source/repos/MOVEitFileTransfer/vcpkg_installed/vcpkg/blds/detect_compiler/x64-windows-rel/CMakeFiles/edit_cache.dir
+C:/Users/Jukich/source/repos/MOVEitFileTransfer/vcpkg_installed/vcpkg/blds/detect_compiler/x64-windows-rel/CMakeFiles/rebuild_cache.dir
