@@ -7,19 +7,24 @@
 #include <map>
 #include <set>
 #include <filesystem>
+#include <fstream>
 
 #define ERROR_UNAUTHORIZED 401
 #define ERROR_CONFLICTED 409
 #define ERROR_SIZE_LIMIT_EXCEEDED 413
+#define DEFAULT_HOST_NAME "https://testserver.moveitcloud.com/"
 
-const std::string username = "interview.julien.aleksiev";
-const std::string passwd = "3]$t3Z}w";
+const int maxRetryCount = 10;
 
+//config parameters
+std::string username = "";
+std::string password = "";
+std::string localPath = "";
+std::string hostname = "";
+
+//current user properties
 std::string apiToken = "";
 std::string homeFolderID = "";
-
-std::string localPath = "D:\\work";
-const int maxRetryCount = 10;
 
 size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output)
 {
@@ -29,7 +34,7 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* out
 
 std::map<std::string, std::string> ParseResponse(std::string reply)
 {
-    //optimally should use a json parser
+    //optimally a json parser should be used
     std::map<std::string, std::string> responseParams;
 
     std::regex rgx("\"([^\"]+)\":\s*(.+?)[,}]");
@@ -54,8 +59,8 @@ void PrintResponse(std::map<std::string, std::string>& responseParams)
 
 bool GetAuthorizationToken()
 {
-    const std::string apiTokenURL = "https://testserver.moveitcloud.com/api/v1/token";
-    std::string authData = "grant_type=password&username=" + username + "&password=" + passwd;
+    const std::string apiTokenURL = hostname + "api/v1/token";
+    std::string authData = "grant_type=password&username=" + username + "&password=" + password;
     std::string response;
     long respCode;
 
@@ -73,7 +78,7 @@ bool GetAuthorizationToken()
 
     if (res != CURLE_OK)
     {
-        std::cout << "Error in retreiving token: " << curl_easy_strerror(res) << "\n";
+        std::cout << "Error in retreiving API token: " << curl_easy_strerror(res) << "\n";
     }
 
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &respCode);
@@ -83,7 +88,7 @@ bool GetAuthorizationToken()
     bool success = respCode == 200;
     if (!success)
     {
-        std::cout << "Error in retreiving token!\n";
+        std::cout << "Error in retreiving API token!\n";
         std::cout << "Response Code: " << respCode << "\n";
         PrintResponse(responseParams);
         return false;
@@ -104,14 +109,14 @@ bool GetAuthorizationToken()
     }
     else
     {
-        std::cout << "Error: Token not found in response body.\n";
+        std::cout << "Error: API token not found in response body.\n";
         return false;
     }
 }
 
 bool GetUserInformation()
 {
-    const std::string apiTokenURL = "https://testserver.moveitcloud.com/api/v1/users/self";
+    const std::string apiTokenURL = hostname + "api/v1/users/self";
     std::string response;
     long respCode;
 
@@ -188,7 +193,7 @@ bool UploadFile(std::string localFilePath, uintmax_t fileSize, int& responseCode
     curl = curl_easy_init();
     if (!curl) return false;
 
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + apiToken + "t").c_str());
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + apiToken).c_str());
     curl_mime* mime = curl_mime_init(curl);
     curl_mimepart* part = curl_mime_addpart(mime);
     curl_mime_name(part, "file");
@@ -240,32 +245,83 @@ bool UploadFile(std::string localFilePath, uintmax_t fileSize, int& responseCode
     return success;
 }
 
-int main()
+bool ParseConfig()
 {
+    wchar_t currentPath[MAX_PATH];
+    GetModuleFileNameW(NULL, currentPath, MAX_PATH);
+    std::string cfgFilePath = std::filesystem::path(currentPath).parent_path().string() + "\\config.txt";
 
-    if (!std::filesystem::exists(localPath))
+    if (!std::filesystem::exists(cfgFilePath))
     {
-        std::cout << "Invalid local path specified\n";
-        return 0;
+        std::cout << "Invalid config path. Please put the \"config.txt\" file in the same directory as the \".exe\".\n";
+        return false;
     }
 
+    std::ifstream localFileStream(cfgFilePath);
+    std::string line;
+    std::regex rgx(R"(([a-zA-Z0-9_]+)\s*=\s*\"(.+)\")");
+
+    std::smatch match;
+
+    while (std::getline(localFileStream, line))
+    {
+        if (!std::regex_search(line, match, rgx))
+        {
+            continue;
+        }
+
+        std::string prop = match[1];
+        std::string value = match[2];
+
+        if (prop == "username")
+        {
+            username = value;
+        }
+        else if (prop == "password")
+        {
+            password = value;
+        }
+        else if (prop == "local_path")
+        {
+            localPath = value;
+        }
+        else if (prop == "hostname")
+        {
+            hostname = value;
+        }
+    }
+
+    if (username == "" || password == "" || localPath == "")
+    {
+        std::cout << "Invalid credentials! Please check \"config.txt\".\n";
+        return false;
+    }
+    if (hostname == "") 
+    {
+        std::cout << std::string("Host name not specified in config. Using default host name: \"") + DEFAULT_HOST_NAME + "\"\n";
+        hostname = DEFAULT_HOST_NAME;
+    }
+    std::cout << "Config parameters parsed successfully!\n";
+
+    return true;
+}
+
+void CheckFiles() 
+{
+
+    if (!GetAuthorizationToken() || !GetUserInformation())
+    {
+        return;
+    }
+
+    int waitMsgCount = 0;
+    int retryCount = maxRetryCount;
     std::set<std::string> lastExistingFilesSet;
 
     for (const auto& localFile : std::filesystem::directory_iterator(localPath))
     {
         lastExistingFilesSet.insert(localFile.path().string());
     }
-
-    if (!GetAuthorizationToken())
-    {
-        return 0;
-    }
-    if (!GetUserInformation())
-    {
-        return 0;
-    }
-
-    int retryCount = maxRetryCount;
 
     while (true)
     {
@@ -286,6 +342,7 @@ int main()
 
         for (const std::string& newFile : newFiles)
         {
+            std::cout << "\r";
             int responseCode = 0;
             const uintmax_t fileSize = std::filesystem::file_size(newFile);
             if (UploadFile(newFile, fileSize, responseCode))
@@ -298,36 +355,59 @@ int main()
                 if (retryCount == 0)
                 {
                     std::cout << "Max retry count reached.\nShutting down...\n";
-                    return 0;
+                    return;
                 }
 
                 if (responseCode == ERROR_UNAUTHORIZED)
-                {                    
+                {
                     if (!GetAuthorizationToken())
                     {
-                        return 0;
+                        return;
                     }
                 }
                 else if (responseCode == ERROR_CONFLICTED)
                 {
                     //File cannot be uploaded, ignore it.
                     //Think for possible way to replace existing file
-                    retryCount = maxRetryCount; 
+                    retryCount = maxRetryCount;
                     continue;
                 }
                 else if (responseCode == ERROR_SIZE_LIMIT_EXCEEDED)
                 {
                     //File cannot be uploaded, ignore it.
-                    retryCount = maxRetryCount; 
+                    retryCount = maxRetryCount;
                     continue;
                 }
                 //Remove file from the set as it is not uploaded yet
                 currentFilesSet.erase(newFile);
             }
         }
+
+        std::cout << "\rWaiting for a new file" << std::string(waitMsgCount, '.') << "   " << std::flush;
+        waitMsgCount = (waitMsgCount + 1) % 4;
+
+
         lastExistingFilesSet = std::move(currentFilesSet);
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
+}
+int main(int argc, char* argv[])
+{    
+    if (!ParseConfig())
+    {
+        system("pause");
+        return 0;
+    }
+    if (!std::filesystem::exists(localPath))
+    {
+        std::cout << "Invalid local path specified! Path \"" << localPath << "\" does not exist.\n";
+        system("pause");
+        return 0;
+    }   
+
+    CheckFiles();
+  
+    system("pause");
     return 0;
 }
 
