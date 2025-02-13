@@ -1,0 +1,8 @@
+//Enter your credentials here
+//This file must be in the same folder as "MOVEitFileTransfer.exe"
+
+username="ExampleUsername"
+password="ExamplePassword"
+local_path="D:\ExampleFolder"
+hostname="https://testserver.moveitcloud.com/"
+max_retry_count = 5 // Max consecutive failed uploads count, infinite by default

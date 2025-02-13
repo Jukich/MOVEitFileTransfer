@@ -14,13 +14,13 @@
 #define ERROR_SIZE_LIMIT_EXCEEDED 413
 #define DEFAULT_HOST_NAME "https://testserver.moveitcloud.com/"
 
-const int maxRetryCount = 10;
 
 //config parameters
 std::string username = "";
 std::string password = "";
 std::string localPath = "";
 std::string hostname = "";
+int maxRetryCount = INT_MAX;
 
 //current user properties
 std::string apiToken = "";
@@ -207,8 +207,9 @@ bool UploadFile(std::string localFilePath, uintmax_t fileSize, int& responseCode
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE_LARGE, (curl_off_t)fileSize);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
 
-    std::cout << "Started uploading file \"" << localFilePath << "\"...\n";
-    std::cout << "File size = " << fileSize << "\n";
+    std::cout << "Started uploading file \"" << localFilePath << "\"\n";
+    //std::cout << "File size = " << fileSize / 1024 << "KB\n";
+    std::cout << "Please wait...\n";
 
     res = curl_easy_perform(curl);
     if (res != CURLE_OK)
@@ -259,8 +260,8 @@ bool ParseConfig()
 
     std::ifstream localFileStream(cfgFilePath);
     std::string line;
-    std::regex rgx(R"(([a-zA-Z0-9_]+)\s*=\s*\"(.+)\")");
 
+    std::regex rgx(R"(([a-zA-Z0-9_]+)\s*=\s*\"?([^\"\s]+)\"?)");
     std::smatch match;
 
     while (std::getline(localFileStream, line))
@@ -289,6 +290,17 @@ bool ParseConfig()
         {
             hostname = value;
         }
+        else if (prop == "max_retry_count")
+        {
+            try 
+            {
+                maxRetryCount = std::stoi(value);
+            }
+            catch (std::exception& e) 
+            {
+                std::cout << "Invalid max_retry_value specified in config! Using default value (infinite)." << '\n';
+            }
+        }
     }
 
     if (username == "" || password == "" || localPath == "")
@@ -298,7 +310,7 @@ bool ParseConfig()
     }
     if (hostname == "") 
     {
-        std::cout << std::string("Host name not specified in config. Using default host name: \"") + DEFAULT_HOST_NAME + "\"\n";
+        std::cout << std::string("\"hostname\" not specified in config. Using default host name: \"") + DEFAULT_HOST_NAME + "\"\n";
         hostname = DEFAULT_HOST_NAME;
     }
     std::cout << "Config parameters parsed successfully!\n";
@@ -410,5 +422,3 @@ int main(int argc, char* argv[])
     system("pause");
     return 0;
 }
-
-//curl - k --request POST --url https ://your-transfer-server/api/v1/token --data "grant_type=password&username=emmacurtis&password=1a2B3cA1b2C3"
