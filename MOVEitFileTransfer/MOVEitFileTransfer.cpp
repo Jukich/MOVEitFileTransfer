@@ -4,10 +4,10 @@
 #include <thread>
 #include <chrono>
 #include <regex>
-#include <map>
 #include <set>
 #include <filesystem>
 #include <fstream>
+#include <nlohmann/json.hpp>
 
 #define ERROR_UNAUTHORIZED 401
 #define ERROR_CONFLICTED 409
@@ -30,31 +30,6 @@ size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* out
 {
     output->append((char*)contents, size * nmemb);
     return size * nmemb;
-}
-
-std::map<std::string, std::string> ParseResponse(std::string reply)
-{
-    //optimally a json parser should be used
-    std::map<std::string, std::string> responseParams;
-
-    std::regex rgx("\"([^\"]+)\":\s*(.+?)[,}]");
-    std::smatch match;
-
-    while (std::regex_search(reply, match, rgx))
-    {
-        if (match.size() < 3) continue;
-        responseParams[match[1].str()] = match[2].str();
-        reply = match.suffix();
-    }
-    return responseParams;
-}
-
-void PrintResponse(std::map<std::string, std::string>& responseParams)
-{
-    for (const auto& param : responseParams)
-    {
-        std::cout << "\t" << param.first << ": " << param.second << "\n";
-    }
 }
 
 bool GetAuthorizationToken()
@@ -84,25 +59,20 @@ bool GetAuthorizationToken()
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &respCode);
     curl_easy_cleanup(curl);
 
-    std::map<std::string, std::string> responseParams = ParseResponse(response);
+    nlohmann::json responseParams = nlohmann::json::parse(response);
     bool success = respCode == 200;
     if (!success)
-    {
+    {        
         std::cout << "Error in retreiving API token!\n";
         std::cout << "Response Code: " << respCode << "\n";
-        PrintResponse(responseParams);
+        std::cout << responseParams.dump(4) << "\n";
         return false;
     }
 
 
-    if (responseParams.find("access_token") != responseParams.end())
+    if (responseParams.contains("access_token"))
     {
         apiToken = responseParams["access_token"];
-
-        //Remove quotes
-        apiToken.erase(0, 1);
-        apiToken.erase(apiToken.size() - 1);
-
         std::cout << "Authorization token retreived successfully!\n";
         //std::cout <<"API Token = " << apiToken << "\n";
         return true;
@@ -142,19 +112,20 @@ bool GetUserInformation()
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    std::map<std::string, std::string> responseParams = ParseResponse(response);
+    nlohmann::json responseParams = nlohmann::json::parse(response);
     bool success = respCode == 200;
     if (!success)
     {
         std::cout << "Get user details failed\n";
         std::cout << "Response Code: " << respCode << "\n";
-        PrintResponse(responseParams);
+        std::cout << responseParams.dump(4) << "\n";
         return false;
     }
 
-    if (responseParams.find("homeFolderID") != responseParams.end())
+    if (responseParams.contains("homeFolderID"))
     {
-        homeFolderID = responseParams["homeFolderID"];
+        //homeFolderID = std::to_string(responseParams["homeFolderID"].get<int>());
+        homeFolderID = responseParams["homeFolderID"].dump();
         std::cout << "Home Folder ID retreived successfully!\n";
         //std::cout << "Home folder ID = " << homeFolderID << "\n";
         return true;
@@ -182,7 +153,7 @@ bool UploadFile(std::string localFilePath, uintmax_t fileSize, int& responseCode
         return false;
     }
 
-    const std::string uploadFileURL = "https://testserver.moveitcloud.com/api/v1/folders/" + homeFolderID + "/files";
+    const std::string uploadFileURL = hostname + "api/v1/folders/" + homeFolderID + "/files";
 
     CURL* curl;
     CURLcode res;
@@ -227,15 +198,15 @@ bool UploadFile(std::string localFilePath, uintmax_t fileSize, int& responseCode
     if (!success)
     {
         std::cout << "Upload file failed!\n";
-        std::cout << "\tResponse Code: " << respCode << "\n";
-        std::map<std::string, std::string> responseParams = ParseResponse(response);
+        std::cout << "Response Code: " << respCode << "\n";
+        nlohmann::json responseParams = nlohmann::json::parse(response);
         if (respCode == ERROR_SIZE_LIMIT_EXCEEDED)
         {
             std::cout << response << "\n";
         }
         else
         {
-            PrintResponse(responseParams);
+            std::cout << responseParams.dump(4) << "\n";
         }
     }
     else

@@ -2,6 +2,7 @@
   "name": "moveitft",
   "version": "1.0",
   "dependencies": [
-    "curl"
+    "curl",
+    "nlohmann-json"
   ]
 }
