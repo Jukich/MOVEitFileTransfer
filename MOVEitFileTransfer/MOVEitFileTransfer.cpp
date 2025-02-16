@@ -59,7 +59,18 @@ bool GetAuthorizationToken()
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &respCode);
     curl_easy_cleanup(curl);
 
-    nlohmann::json responseParams = nlohmann::json::parse(response);
+    nlohmann::json responseParams;
+    try 
+    {
+        responseParams = nlohmann::json::parse(response);
+    }
+    catch (nlohmann::json::parse_error& e) 
+    {
+        std::cout << "Response Code: " << respCode << "\n";
+        std::cout << "Failed in retreiving API token. Error in parsing repsonse body.\n";
+        return false;
+    }
+    
     bool success = respCode == 200;
     if (!success)
     {        
@@ -112,11 +123,22 @@ bool GetUserInformation()
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    nlohmann::json responseParams = nlohmann::json::parse(response);
+    nlohmann::json responseParams;
+    try
+    {
+        responseParams = nlohmann::json::parse(response);
+    }
+    catch (nlohmann::json::parse_error& e)
+    {
+        std::cout << "Response Code: " << respCode << "\n";
+        std::cout << "Failed in retreiving homeFolderID. Error in parsing repsonse body.\n";
+        return false;
+    }
+
     bool success = respCode == 200;
     if (!success)
     {
-        std::cout << "Get user details failed\n";
+        std::cout << "Get user information failed\n";
         std::cout << "Response Code: " << respCode << "\n";
         std::cout << responseParams.dump(4) << "\n";
         return false;
@@ -199,14 +221,14 @@ bool UploadFile(std::string localFilePath, uintmax_t fileSize, int& responseCode
     {
         std::cout << "Upload file failed!\n";
         std::cout << "Response Code: " << respCode << "\n";
-        nlohmann::json responseParams = nlohmann::json::parse(response);
-        if (respCode == ERROR_SIZE_LIMIT_EXCEEDED)
+        try 
+        {
+            nlohmann::json responseParams = nlohmann::json::parse(response);
+            std::cout << responseParams.dump(4) << "\n";
+        }
+        catch (nlohmann::json::parse_error& e) 
         {
             std::cout << response << "\n";
-        }
-        else
-        {
-            std::cout << responseParams.dump(4) << "\n";
         }
     }
     else
